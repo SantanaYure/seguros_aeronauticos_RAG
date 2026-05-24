@@ -20,5 +20,26 @@
     - Import validado: `from google import genai; from google.genai import types` → OK
     - `create_embeddings.py` reexecutado em `DRY_RUN=True` com sucesso (273 chunks, 1 página ignorada)
   - [x] `.gitignore` expandido (cobertura completa para Python: `.venv/`, caches, IDE, OS, logs)
-  - [ ] **Próximo**: Alterar `DRY_RUN=False` e executar carga real no Supabase
-  - [ ] **Próximo**: Validar registros inseridos com `supabase_diagnostics.sql`
+  - [x] Tentativa inicial de carga real com `DRY_RUN=False` — falhou com:
+    - Erro Gemini `429 RESOURCE_EXHAUSTED` (quota esgotada após 87 embeddings)
+    - Erro Supabase `PGRST125` ("Invalid path specified in request URL") em todas as 87 inserções
+- [x] Passo 2C: correção de quota Gemini e PGRST125 Supabase
+  - [x] `create_embeddings.py` refatorado:
+    - `DRY_RUN=True` por padrão; `MAX_RECORDS=3` por padrão
+    - Validação de `SUPABASE_URL` (bloqueia `/rest/v1` e paths extras)
+    - Validação de conexão Supabase **antes** de qualquer chamada Gemini
+    - Retry com exponential backoff + jitter para `429`
+    - Pausa `SLEEP_BETWEEN_EMBEDDINGS_SECONDS=5` entre chamadas reais
+    - Cache local `.cache/gemini_embeddings_cache.jsonl` (chave `sha256(model+dim+content)`)
+    - Idempotência via `chunk_already_exists()` por `(nome_arquivo, pagina, chunk_strategy, chunk_index)`
+    - Relatório final expandido (cache hits, falhas 429, chunks já existentes etc.)
+  - [x] `test_supabase_connection.py` criado — testa conexão sem chamar Gemini e sem inserir
+  - [x] `supabase_add_unique_constraint.sql` criado (opcional, não executado automaticamente)
+  - [x] `.gitignore` já contém `.cache/`, `__pycache__/`, `*.pyc`, `.env` (sem alterações necessárias)
+  - [x] `requirements.txt` já contém `google-genai`, `supabase<2.26.0`, `python-dotenv`, `tiktoken`, `h2>=3,<5` (sem `pyiceberg` e sem `google-generativeai`)
+  - [x] `walkthrough.md` atualizado com seção "Correção Passo 2C"
+  - [ ] **Próximo**: rodar `python test_supabase_connection.py` para confirmar conexão
+  - [ ] **Próximo**: rodar `python create_embeddings.py` com `DRY_RUN=True` para revalidar chunking
+  - [ ] **Próximo**: rodar `python create_embeddings.py` com `DRY_RUN=False` e `MAX_RECORDS=3` (teste real limitado)
+  - [ ] **Próximo (após sucesso)**: aumentar `MAX_RECORDS` gradualmente; carga completa só após validar parciais
+  - [ ] **Próximo (opcional)**: aplicar manualmente `supabase_add_unique_constraint.sql` no SQL Editor após confirmar 0 duplicidades

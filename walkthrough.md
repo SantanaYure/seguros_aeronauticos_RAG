@@ -107,3 +107,60 @@ python create_embeddings.py                         # com DRY_RUN=True
 - Revisar os chunks e a estimativa de tokens do relatório
 - Alterar `DRY_RUN=False` no script para executar a carga real no Supabase
 - Validar os registros inseridos com `supabase_diagnostics.sql`
+
+---
+
+## Correção Passo 2C: quota Gemini e PGRST125 Supabase
+
+### Sintomas observados na primeira carga real
+Ao alterar `DRY_RUN=False` em [`create_embeddings.py`](file:///d:/OneDrive/%C3%81rea%20de%20Trabalho/Projetos/seguros_aeronauticos_RAG/create_embeddings.py) e tentar a carga real, dois erros ocorreram:
+
+1. **Gemini `429 RESOURCE_EXHAUSTED`** ("You exceeded your current quota").
+   - 87 chunks geraram embedding; 186 falharam por quota antes mesmo de tentar inserção.
+2. **Supabase `PGRST125`** ("Invalid path specified in request URL").
+   - Todos os 87 chunks preparados falharam na inserção (0 inseridos, 87 com falha).
+
+### Diagnóstico
+- **`429`**: A versão anterior do script não tinha pausa entre chamadas, retry com backoff, nem cache local. Isso enviou rajada de requisições e estourou a quota do Gemini imediatamente. Além disso, o erro **só foi descoberto depois** de chamar Gemini, desperdiçando quota.
+- **`PGRST125`**: O PostgREST (camada que o `supabase-py` chama por baixo) responde `PGRST125` quando o path da request é inválido. As causas comuns são:
+  - `SUPABASE_URL` contendo `/rest/v1` (deve ser apenas a Project URL).
+  - `SUPABASE_URL` com path extra (por exemplo `https://x.supabase.co/db`).
+  - Nome de tabela qualificado com schema na chamada Python (`supabase.table("public.document_chunks")` — deve ser apenas `"document_chunks"`).
+- Tudo isso só foi descoberto **depois** que a pipeline já tinha gasto quota.
+
+### Correções aplicadas em `create_embeddings.py`
+- `DRY_RUN = True` por padrão.
+- `MAX_RECORDS = 3` por padrão, para teste real limitado.
+- `TABLE_NAME = "document_chunks"` (sem prefixo `public.`).
+- Função `validate_supabase_url()`:
+  - Exige `https://`.
+  - Bloqueia paths como `/rest/v1`, `/auth/v1`, `/storage/v1`, `/functions/v1` e qualquer path extra.
+  - Remove barra final.
+  - Mensagem: *"SUPABASE_URL inválida. Use apenas a Project URL do Supabase, no formato https://seu-projeto.supabase.co. Não use URL com /rest/v1."*
+- Função `validate_supabase_connection()`:
+  - Executa `select id, count="exact" limit 1` em `document_chunks` antes de **qualquer** chamada Gemini.
+  - Se a conexão falhar, interrompe o pipeline com diagnóstico claro.
+- Retry com **exponential backoff** + jitter para `429 RESOURCE_EXHAUSTED` (`INITIAL_RETRY_DELAY_SECONDS=30`, `MAX_RETRIES=5`).
+- Pausa de `SLEEP_BETWEEN_EMBEDDINGS_SECONDS=5` entre chamadas reais ao Gemini (não dorme em DRY_RUN nem em cache hit).
+- **Cache local** em `.cache/gemini_embeddings_cache.jsonl` (chave `sha256(model + dim + content)`).
+- **Idempotência** via `chunk_already_exists()` — verifica `(nome_arquivo, pagina, chunk_strategy, chunk_index)` antes de chamar Gemini, evitando regerar embedding de chunks que já estão no banco.
+- Cliente Gemini só é instanciado **depois** de validar Supabase, para não gastar quota se a carga falhar.
+- Relatório expandido (cache hits, chamadas Gemini, falhas 429, chunks já existentes, etc.).
+
+### Novo script auxiliar
+[`test_supabase_connection.py`](file:///d:/OneDrive/%C3%81rea%20de%20Trabalho/Projetos/seguros_aeronauticos_RAG/test_supabase_connection.py): testa conexão com `document_chunks` sem chamar Gemini e sem inserir nada. Deve ser executado **antes** de qualquer carga real.
+
+### SQL opcional (não executado automaticamente)
+[`supabase_add_unique_constraint.sql`](file:///d:/OneDrive/%C3%81rea%20de%20Trabalho/Projetos/seguros_aeronauticos_RAG/supabase_add_unique_constraint.sql): adiciona constraint `UNIQUE (nome_arquivo, pagina, chunk_strategy, chunk_index)` em `public.document_chunks`. Apenas executar manualmente após verificar ausência de duplicidades (query incluída no arquivo).
+
+### Ordem segura para retomar a carga
+1. Confirmar `.env` com `SUPABASE_URL` apenas no formato `https://seu-projeto.supabase.co` (sem `/rest/v1`).
+2. Rodar `python test_supabase_connection.py` — deve imprimir "Conexão bem-sucedida".
+3. Confirmar `DRY_RUN=True` em `create_embeddings.py` e rodar `python create_embeddings.py` — deve gerar 273 chunks sem chamar Gemini.
+4. Para teste real limitado: `DRY_RUN=False` e `MAX_RECORDS=3`. Rodar `python create_embeddings.py` e confirmar 3 inserções.
+5. Somente após sucesso do teste limitado, aumentar `MAX_RECORDS` (ou usar `None` para carga completa) — sempre respeitando o tempo de pausa para não estourar quota.
+
+### Notas sobre quota Gemini
+- Em conta com plano gratuito, `gemini-embedding-001` tem limites baixos de RPM/RPD. Mesmo com `SLEEP_BETWEEN_EMBEDDINGS_SECONDS=5`, uma carga de 273 chunks pode atingir o limite diário.
+- O cache local garante que retentativas posteriores **não regenerem** os embeddings já obtidos, economizando quota.
+- A idempotência garante que retentativas **não duplicam** dados no Supabase.
