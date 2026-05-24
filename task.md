@@ -14,5 +14,11 @@
   - [x] Migrar para `google-genai` com `gemini-embedding-001` (com output_dimensionality=768)
   - [x] `requirements.txt` atualizado com `google-genai` e `h2>=3,<5`
   - [x] `walkthrough.md` atualizado com resultados do DRY_RUN
+  - [x] **Correção de ambiente**: `.venv` estava usando Python 3.14 (incompatível com `google-genai`/`pydantic`)
+    - Ambiente recriado com **Python 3.11.9** (`py -3.11 -m venv .venv`)
+    - `requirements.txt` revisado (sem `pyiceberg`, sem `google-generativeai` legado)
+    - Import validado: `from google import genai; from google.genai import types` → OK
+    - `create_embeddings.py` reexecutado em `DRY_RUN=True` com sucesso (273 chunks, 1 página ignorada)
+  - [x] `.gitignore` expandido (cobertura completa para Python: `.venv/`, caches, IDE, OS, logs)
   - [ ] **Próximo**: Alterar `DRY_RUN=False` e executar carga real no Supabase
   - [ ] **Próximo**: Validar registros inseridos com `supabase_diagnostics.sql`

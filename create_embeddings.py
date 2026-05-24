@@ -12,7 +12,7 @@ from supabase import create_client, Client
 # =====================================================================
 # CONFIGURAÇÕES E PARÂMETROS
 # =====================================================================
-DRY_RUN = False
+DRY_RUN = True
 
 STAGING_DIR = Path("staging")
 TABLE_NAME = "document_chunks"

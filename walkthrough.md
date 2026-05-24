@@ -73,6 +73,36 @@ O [`requirements.txt`](file:///d:/OneDrive/%C3%81rea%20de%20Trabalho/Projetos/se
 - `google-generativeai` → **`google-genai`** (nova biblioteca oficial)
 - **`h2>=3,<5`** adicionado (suporte HTTP/2 para o cliente Supabase via `httpx`)
 
+### Versão do Python — IMPORTANTE
+Use **Python 3.11** ou **3.12** neste projeto. **Evite Python 3.14**: o `google-genai` (e dependências como `pydantic`) ainda não são compatíveis com 3.14 no Windows, e o import trava durante a construção dos modelos Pydantic.
+
+Comandos recomendados para recriar o ambiente do zero:
+
+```powershell
+# Apagar venv antigo (se existir)
+Remove-Item -Recurse -Force .venv
+
+# Criar venv com Python 3.11
+py -3.11 -m venv .venv
+
+# Ativar (PowerShell)
+.\.venv\Scripts\Activate.ps1
+# Se houver bloqueio de política:
+#   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+#   .\.venv\Scripts\Activate.ps1
+
+# Instalar dependências
+python -m pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+
+# Validar
+python --version                                    # deve mostrar 3.11.x ou 3.12.x
+python -c "from google import genai; from google.genai import types; print('google-genai OK')"
+
+# Rodar pipeline em modo seguro
+python create_embeddings.py                         # com DRY_RUN=True
+```
+
 ### Próximos Passos
 - Revisar os chunks e a estimativa de tokens do relatório
 - Alterar `DRY_RUN=False` no script para executar a carga real no Supabase
