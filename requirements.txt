@@ -1,5 +1,6 @@
-google-generativeai
+google-genai
 supabase<2.26.0
 python-dotenv
 tiktoken
 pypdf
+h2>=3,<5

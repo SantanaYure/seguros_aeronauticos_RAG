@@ -1,5 +1,3 @@
-# Lista de Tarefas - RAG Seguros Aeronáuticos
-
 - [x] Passo 1: ETL e Ingestão (`parse_pdf.py` e validação do `staging/`)
 - [x] Passo 2A: Preparação do Schema Supabase para Gemini
   - [x] Criar/verificar arquivo de dependências `requirements.txt`
@@ -8,5 +6,13 @@
   - [x] Criar `supabase_schema.sql` com o schema do Gemini (vector(768))
   - [x] Criar `supabase_diagnostics.sql` com as queries de validação
   - [x] Criar/atualizar documentação em `walkthrough.md`
-- [ ] Passo 2B: Chunking e Ingestão de Embeddings
-  - [ ] Implementar `create_embeddings.py` (com suporte a DRY_RUN e estratégias A/B)
+- [x] Passo 2B: Chunking e Ingestão de Embeddings
+  - [x] Implementar `create_embeddings.py` com `DRY_RUN=True` por padrão
+  - [x] Script lê os 274 arquivos de `staging/` e ignora páginas com < 30 chars
+  - [x] 273 chunks criados (estratégia `chunk_strategy="page"`)
+  - [x] Relatório completo impresso no terminal (chunks por tipo, seguradora, arquivo)
+  - [x] Migrar para `google-genai` com `gemini-embedding-001` (com output_dimensionality=768)
+  - [x] `requirements.txt` atualizado com `google-genai` e `h2>=3,<5`
+  - [x] `walkthrough.md` atualizado com resultados do DRY_RUN
+  - [ ] **Próximo**: Alterar `DRY_RUN=False` e executar carga real no Supabase
+  - [ ] **Próximo**: Validar registros inseridos com `supabase_diagnostics.sql`
