@@ -1,0 +1,5 @@
+google-generativeai
+supabase<2.26.0
+python-dotenv
+tiktoken
+pypdf
