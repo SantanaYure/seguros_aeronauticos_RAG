@@ -60,4 +60,26 @@
 - Continuar a carga em blocos controlados via `create_embeddings.py`:
   `MAX_RECORDS=20` → validar → `50` → validar → `100` → validar → `None` (somente se a quota Gemini permitir).
 - Após cada bloco, rodar a query de contagem e a query de detecção de duplicidades (ver [HANDOFF.md](./HANDOFF.md#9-supabase)).
-- Depois da carga completa, implementar `test_match.py` (busca vetorial básica com `task_type="RETRIEVAL_QUERY"`).
+- Depois da carga completa, rodar `test_match.py` (já criado — ver Passo 2D abaixo).
+
+- [x] Passo 2D: teste de busca vetorial básica (Retrieval)
+  - [x] Criado `test_match.py` na raiz do projeto
+  - [x] Testa SOMENTE o "R" do RAG (Retrieval). Não gera resposta com LLM.
+  - [x] Usa SDK `google-genai` com `gemini-embedding-001`, `output_dimensionality=768`, `task_type="RETRIEVAL_QUERY"`
+  - [x] Chama a RPC `public.match_document_chunks` (`match_count=8`, `match_threshold=0.5`)
+  - [x] Valida Supabase ANTES de chamar Gemini (mesmo padrão de `create_embeddings.py`)
+  - [x] Não insere, não altera, não apaga — apenas SELECT seguro e RPC de leitura
+  - [x] Suporta CLI: `python test_match.py` roda `TEST_QUESTIONS`; `python test_match.py --question "..."` roda pergunta única
+  - [x] Perguntas iniciais (`TEST_QUESTIONS`):
+    1. "O que é casco aeronáutico?"
+    2. "O seguro cobre pane seca?"
+    3. "O que significa exclusão operacional?"
+    4. "O que é responsabilidade civil no seguro aeronáutico?"
+    5. "Quando a seguradora pode negar indenização?"
+  - [x] Imprime, para cada chunk, `nome_arquivo`, `pagina`, `tipo`, `seguradora`/`orgao`, `chunk_strategy`, `chunk_index`, `token_count`, `similarity` (4 casas) e trecho do `content` (até 900 chars)
+  - [x] Imprime linha de avaliação manual (`OK / PARCIAL / RUIM / NÃO ENCONTRADO`) após cada pergunta
+  - [x] Relatório final com totais, threshold e aviso explícito de que **não** houve geração de resposta com LLM
+  - [ ] **Próximo (avaliação)**: rodar `python test_match.py` e marcar manualmente cada pergunta como `OK / PARCIAL / RUIM / NÃO ENCONTRADO`
+  - [ ] **Próximo (calibração)**: se necessário, ajustar `MATCH_THRESHOLD` (0.5 → 0.6 → 0.7) e/ou `MATCH_COUNT`
+  - [ ] **Próximo (ampliação)**: ampliar `TEST_QUESTIONS` com perguntas específicas por seguradora e por artigo da SUSEP 407/2021
+  - [ ] **Próximo (objetivo)**: avaliar qualitativamente a relevância dos chunks recuperados antes de evoluir para chunking por artigo/cláusula, busca híbrida e HyDE

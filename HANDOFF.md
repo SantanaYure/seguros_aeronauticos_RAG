@@ -85,6 +85,7 @@ Esteira de dados ponta-a-ponta:
 | [validate_staging.py](./validate_staging.py) | Auditoria dos arquivos JSON gerados: checagem de schema, encoding, páginas vazias e avisos benignos. |
 | [create_embeddings.py](./create_embeddings.py) | **Passo 2**. Lê `staging/`, gera embeddings via Gemini e insere em `public.document_chunks` no Supabase. Possui `DRY_RUN`, `MAX_RECORDS`, cache local, retry com backoff e idempotência. |
 | [test_supabase_connection.py](./test_supabase_connection.py) | Smoke test: valida `SUPABASE_URL` e conecta em `document_chunks` **sem** chamar Gemini e **sem** inserir nada. |
+| [test_match.py](./test_match.py) | **Passo 2D**. Testa Retrieval: gera embedding da pergunta com `task_type="RETRIEVAL_QUERY"` e chama a RPC `match_document_chunks`. **Não** gera resposta final com LLM. Suporta `--question "..."` para pergunta única. |
 | [supabase_schema.sql](./supabase_schema.sql) | DDL para criar `public.document_chunks` (com `vector(768)`), índices (ivfflat, GIN para FTS e metadata, btree para colunas filtradas) e a RPC `match_document_chunks`. |
 | [supabase_diagnostics.sql](./supabase_diagnostics.sql) | Queries de diagnóstico (colunas, índices, RPC, contagem de registros). |
 | [supabase_add_unique_constraint.sql](./supabase_add_unique_constraint.sql) | **Opcional, não executado automaticamente**. Adiciona `UNIQUE (nome_arquivo, pagina, chunk_strategy, chunk_index)` em `document_chunks`. |
@@ -137,6 +138,22 @@ Esteira de dados ponta-a-ponta:
   - 0 falhas de inserção
 
 > Em outras palavras: **a esteira ponta a ponta está funcional**. Faltam **270 chunks restantes** a inserir, em blocos controlados.
+
+### Passo 2D — Teste de busca vetorial básica (CONCLUÍDO — esqueleto)
+- [test_match.py](./test_match.py) criado.
+- Testa **somente o Retrieval** do RAG (o "R" de RAG). **Não** gera resposta final com LLM.
+- Gera embedding da pergunta com `task_type="RETRIEVAL_QUERY"` (modelo `gemini-embedding-001`, dim 768).
+- Chama a RPC `public.match_document_chunks` no Supabase com `match_count=8` e `match_threshold=0.5` (valor baixo inicial para diagnóstico — pode ser elevado para `0.6`/`0.7` depois).
+- Imprime cada chunk recuperado com `nome_arquivo`, `pagina`, `tipo`, `seguradora`/`orgao`, `chunk_strategy`, `chunk_index`, `token_count`, `similarity` e trecho do `content` (até `SHOW_CONTENT_CHARS=900`).
+- Para cada pergunta, imprime uma linha de **avaliação manual** (`OK / PARCIAL / RUIM / NÃO ENCONTRADO`) para o time copiar do terminal e analisar relevância.
+- Não insere, não altera, não apaga, não recria schema, não chama LLM de geração, não imprime chaves.
+- Perguntas iniciais embutidas em `TEST_QUESTIONS`:
+  1. "O que é casco aeronáutico?"
+  2. "O seguro cobre pane seca?"
+  3. "O que significa exclusão operacional?"
+  4. "O que é responsabilidade civil no seguro aeronáutico?"
+  5. "Quando a seguradora pode negar indenização?"
+- Suporta modo interativo: `python test_match.py --question "..."` roda apenas a pergunta passada.
 
 ---
 

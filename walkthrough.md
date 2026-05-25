@@ -167,3 +167,9 @@ Ao alterar `DRY_RUN=False` em [`create_embeddings.py`](file:///d:/OneDrive/%C3%8
 - Em conta com plano gratuito, `gemini-embedding-001` tem limites baixos de RPM/RPD. Mesmo com `SLEEP_BETWEEN_EMBEDDINGS_SECONDS=5`, uma carga de 273 chunks pode atingir o limite diário.
 - O cache local garante que retentativas posteriores **não regenerem** os embeddings já obtidos, economizando quota.
 - A idempotência garante que retentativas **não duplicam** dados no Supabase.
+
+---
+
+## Passo 2D: teste de busca vetorial básica (Retrieval)
+
+[`test_match.py`](file:///d:/OneDrive/%C3%81rea%20de%20Trabalho/Projetos/seguros_aeronauticos_RAG/test_match.py) testa somente o "R" do RAG. Não gera resposta final com LLM. Gera embedding da pergunta com `task_type="RETRIEVAL_QUERY"` e chama a RPC `public.match_document_chunks` (`match_count=8`, `match_threshold=0.5` inicial, calibrar depois). Imprime cada chunk recuperado com `nome_arquivo`, `pagina`, `tipo`, `seguradora`/`orgao`, `similarity` e trecho, mais uma linha de avaliação manual (`OK / PARCIAL / RUIM / NÃO ENCONTRADO`) para o time copiar do terminal. Veja detalhes na seção **Passo 2D** do [HANDOFF.md](./HANDOFF.md).
