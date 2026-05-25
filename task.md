@@ -43,3 +43,21 @@
   - [ ] **Próximo**: rodar `python create_embeddings.py` com `DRY_RUN=False` e `MAX_RECORDS=3` (teste real limitado)
   - [ ] **Próximo (após sucesso)**: aumentar `MAX_RECORDS` gradualmente; carga completa só após validar parciais
   - [ ] **Próximo (opcional)**: aplicar manualmente `supabase_add_unique_constraint.sql` no SQL Editor após confirmar 0 duplicidades
+
+- [x] Documentação de handoff
+  - [x] Criado `HANDOFF.md` como documento único de continuidade técnica (PT-BR)
+  - Estrutura: visão geral, objetivo, base documental, arquitetura, estrutura de arquivos, estado atual (passos 1, 2A, 2B, 2C — incluindo a carga real validada com 3 chunks), configuração de ambiente (Python 3.11/3.12, PowerShell), variáveis de ambiente, Supabase (schema, RPC, queries úteis), pipeline de embeddings, comandos PowerShell em ordem segura, riscos e DoD do próximo marco.
+
+## Estado atual resumido
+- Passo 1 concluído (274 JSONs em `staging/`, 0 erros críticos).
+- Passo 2A concluído (schema Supabase aplicado, `public.document_chunks` com `vector(768)` e RPC `match_document_chunks`).
+- Passo 2B concluído (`create_embeddings.py` com `google-genai`, `gemini-embedding-001`, 768d, `chunk_strategy="page"`, 273 chunks em DRY_RUN).
+- Passo 2C concluído (validação Supabase antes do Gemini, cache, retry/backoff, idempotência, `test_supabase_connection.py`).
+- Carga real validada com `MAX_RECORDS=3` — 3 chunks inseridos no Supabase com sucesso (0 falhas).
+- Faltam **270 chunks** para completar a carga.
+
+## Próximo passo recomendado
+- Continuar a carga em blocos controlados via `create_embeddings.py`:
+  `MAX_RECORDS=20` → validar → `50` → validar → `100` → validar → `None` (somente se a quota Gemini permitir).
+- Após cada bloco, rodar a query de contagem e a query de detecção de duplicidades (ver [HANDOFF.md](./HANDOFF.md#9-supabase)).
+- Depois da carga completa, implementar `test_match.py` (busca vetorial básica com `task_type="RETRIEVAL_QUERY"`).

@@ -1,3 +1,6 @@
+> **Para onboarding e retomada do projeto, comece por [HANDOFF.md](./HANDOFF.md).**
+> Este `walkthrough.md` é o diário técnico (decisões, sintomas, correções). O `HANDOFF.md` é o documento único de continuidade.
+
 # Walkthrough - Passo 2A: Schema Supabase para Gemini
 
 ## Passo 2A: Schema Supabase para Gemini
