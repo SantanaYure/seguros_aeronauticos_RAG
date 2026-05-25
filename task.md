@@ -83,3 +83,50 @@
   - [ ] **Próximo (calibração)**: se necessário, ajustar `MATCH_THRESHOLD` (0.5 → 0.6 → 0.7) e/ou `MATCH_COUNT`
   - [ ] **Próximo (ampliação)**: ampliar `TEST_QUESTIONS` com perguntas específicas por seguradora e por artigo da SUSEP 407/2021
   - [ ] **Próximo (objetivo)**: avaliar qualitativamente a relevância dos chunks recuperados antes de evoluir para chunking por artigo/cláusula, busca híbrida e HyDE
+
+- [x] Passo 2E: dataset DRAFT de avaliação (a partir de `staging/`)
+  - [x] Criado `generate_eval_dataset.py` (lê os 274 JSONs e gera perguntas por gatilhos lexicais)
+  - [x] Pasta `eval/` criada
+  - [x] Gerado `eval/evaluation_dataset_draft.csv` com 80 linhas (5 perguntas manuais + 75 automáticas)
+  - [x] Distribuição cobre AXA, Essor, EZZE, Excelsior, Mapfre, CNSP_SUSEP e TODAS (manuais)
+  - [x] Distribuição por tipo: sinistro, exclusao, cobertura, conceitual, obrigacao, regulatorio
+  - [x] CSV respeita: até 80 linhas, sem duplicidades, todas as linhas com `status_revisao = pendente_revisao`
+  - [x] Páginas com texto < 30 caracteres são ignoradas
+  - [x] Round-robin entre fontes garante representatividade de todas as seguradoras + SUSEP
+  - [x] Criado `eval/README.md` explicando draft, v1, rejected e fluxo de revisão humana
+  - [x] Não chama Gemini, não chama Supabase, não toca `staging/`, não lê `.env`
+  - [ ] **Próximo**: revisão humana das linhas de `eval/evaluation_dataset_v1.csv` (preferível trabalhar a partir da v1, não do draft)
+
+- [x] Passo 2F: curadoria automática do dataset DRAFT
+  - [x] Criado `curate_eval_dataset.py` que filtra o draft e gera duas saídas:
+    - `eval/evaluation_dataset_v1.csv` (até 30 linhas, manuais + automáticas filtradas e renumeradas)
+    - `eval/evaluation_dataset_rejected.csv` (linhas removidas + coluna `motivo_rejeicao`)
+  - [x] Filtros de rejeição: resposta vazia/curta, pontos de índice/sumário, termos de capa/contato/registro, fragmentos de palavra no início do trecho, e falta de sinal forte para o tipo da pergunta
+  - [x] Priorização dos aprovados: sinistro > exclusao > cobertura > obrigacao > regulatorio > conceitual > comparacao, com distribuição entre seguradoras e preferência por páginas > 2
+  - [x] Mantém as 5 perguntas manuais sempre na v1
+  - [x] Limpeza: collapse de espaços, truncamento da resposta a 600 caracteres, `status_revisao` permanece `pendente_revisao`, observação enriquecida
+  - [x] Renumeração: manuais permanecem `Q_manual_001..005`; automáticas viram `Q001..Qnn`
+  - [x] Não chama Gemini, não chama Supabase, não apaga o draft, não lê `.env`
+  - [x] Resultado da execução: 80 linhas lidas → 30 na v1 (5 manuais + 25 automáticas) e 50 rejeitadas
+
+- [x] Passo 2G: revisão assistida + promoção ao dataset oficial preliminar
+  - [x] Criado `review_eval_dataset.py` que lê `eval/evaluation_dataset_v1.csv` e gera:
+    - `eval/evaluation_dataset.csv` (dataset oficial preliminar)
+    - `eval/evaluation_dataset_review.md` (versão legível em Markdown para revisão humana)
+  - [x] Normaliza espaços em todas as colunas textuais
+  - [x] Troca `status_revisao` de `pendente_revisao` para `aprovado_preliminar` em todas as linhas
+  - [x] Adiciona a coluna `revisao_observacao` com alertas automáticos por linha:
+    - `documento_esperado vazio` / `pagina_esperada vazia` (apenas em perguntas automáticas)
+    - `resposta ideal ainda é instrução de revisão`
+    - `resposta ideal curta` (< 120 chars)
+    - `possível ruído de capa ou contato`
+    - `resposta pode não explicar responsabilidade civil`
+    - `resposta pode não conter exclusão substantiva` / `fundamento de sinistro` / `fundamento de cobertura` / `fundamento regulatório`
+    - `ok para avaliação preliminar` quando nenhum alerta dispara
+  - [x] Reporta no terminal quantas linhas do `rejected.csv` foram rejeitadas por `excedeu cap` (16) — disponíveis para reincorporação manual
+  - [x] Resultado da execução: 30 linhas lidas → 30 salvas, 25 sem alerta e 5 com alerta (as 5 manuais começam com "Revisar manualmente:")
+  - [x] Não chama Gemini, não chama Supabase, não apaga draft/v1/rejected, não lê `.env`
+  - [x] `eval/README.md`, `task.md` e `HANDOFF.md` atualizados com a nova etapa e os 3 estados de `status_revisao` (`pendente_revisao` → `aprovado_preliminar` → `aprovado`)
+  - [ ] **Próximo**: revisão humana de cada linha do `eval/evaluation_dataset.csv` (consultar `eval/evaluation_dataset_review.md`, ler `revisao_observacao`, ajustar `resposta_ideal_draft`/`documento_esperado`/`pagina_esperada` quando necessário e trocar `status_revisao` para `aprovado`)
+  - [ ] **Próximo**: opcionalmente reincorporar manualmente linhas boas do `rejected.csv` marcadas como `excedeu cap`
+  - [ ] **Próximo (etapa 3)**: implementar `test_retrieval.py` — comparação de busca vetorial pura, busca híbrida (FTS) e HyDE, usando `evaluation_dataset.csv` como referência

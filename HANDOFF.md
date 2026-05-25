@@ -86,6 +86,10 @@ Esteira de dados ponta-a-ponta:
 | [create_embeddings.py](./create_embeddings.py) | **Passo 2**. Lê `staging/`, gera embeddings via Gemini e insere em `public.document_chunks` no Supabase. Possui `DRY_RUN`, `MAX_RECORDS`, cache local, retry com backoff e idempotência. |
 | [test_supabase_connection.py](./test_supabase_connection.py) | Smoke test: valida `SUPABASE_URL` e conecta em `document_chunks` **sem** chamar Gemini e **sem** inserir nada. |
 | [test_match.py](./test_match.py) | **Passo 2D**. Testa Retrieval: gera embedding da pergunta com `task_type="RETRIEVAL_QUERY"` e chama a RPC `match_document_chunks`. **Não** gera resposta final com LLM. Suporta `--question "..."` para pergunta única. |
+| [generate_eval_dataset.py](./generate_eval_dataset.py) | **Passo 2E**. Lê `staging/` e gera o **draft** do dataset de avaliação em `eval/evaluation_dataset_draft.csv`. Não chama Gemini, não chama Supabase. |
+| [curate_eval_dataset.py](./curate_eval_dataset.py) | **Passo 2F**. Curadoria automática do draft: gera `eval/evaluation_dataset_v1.csv` (até 30 linhas filtradas) e `eval/evaluation_dataset_rejected.csv` (linhas removidas + motivo). |
+| [review_eval_dataset.py](./review_eval_dataset.py) | **Passo 2G**. Revisão assistida (sem LLM) da v1: gera `eval/evaluation_dataset.csv` (oficial preliminar, com coluna `revisao_observacao` e `status_revisao=aprovado_preliminar`) e `eval/evaluation_dataset_review.md` (versão legível em Markdown). |
+| [eval/](./eval/) | Pasta do dataset de avaliação (`draft`, `v1`, `rejected`, oficial preliminar `.csv` + revisão `.md`) + `README.md` com fluxo de revisão humana. **Não é dataset de treino.** |
 | [supabase_schema.sql](./supabase_schema.sql) | DDL para criar `public.document_chunks` (com `vector(768)`), índices (ivfflat, GIN para FTS e metadata, btree para colunas filtradas) e a RPC `match_document_chunks`. |
 | [supabase_diagnostics.sql](./supabase_diagnostics.sql) | Queries de diagnóstico (colunas, índices, RPC, contagem de registros). |
 | [supabase_add_unique_constraint.sql](./supabase_add_unique_constraint.sql) | **Opcional, não executado automaticamente**. Adiciona `UNIQUE (nome_arquivo, pagina, chunk_strategy, chunk_index)` em `document_chunks`. |
@@ -154,6 +158,51 @@ Esteira de dados ponta-a-ponta:
   4. "O que é responsabilidade civil no seguro aeronáutico?"
   5. "Quando a seguradora pode negar indenização?"
 - Suporta modo interativo: `python test_match.py --question "..."` roda apenas a pergunta passada.
+
+### Passo 2E — Dataset DRAFT de avaliação (CONCLUÍDO)
+- [generate_eval_dataset.py](./generate_eval_dataset.py) implementado.
+- Lê os 274 JSONs em `staging/` e gera **perguntas a partir de gatilhos lexicais** (riscos excluídos, perda de direito, recusa de sinistro, responsabilidade civil, obrigações do segurado, limite máximo de indenização, liquidação, franquia, âmbito geográfico, grandes riscos, CNSP/SUSEP, agravamento de risco, fraude etc.).
+- Saída: `eval/evaluation_dataset_draft.csv` com **80 linhas** (5 perguntas manuais + 75 automáticas).
+- Distribuição: AXA 15 / Excelsior 17 / Mapfre 16 / EZZE 12 / Essor 12 / CNSP_SUSEP 3 / TODAS 5 (manuais).
+- Round-robin entre fontes garante representatividade de todas as seguradoras + SUSEP antes do cap global.
+- Páginas com menos de 30 caracteres são ignoradas.
+- O draft **não é dataset oficial** — é rascunho bruto e contém perguntas vindas de capa, sumário e índice. É a entrada da curadoria.
+- **Não chama Gemini, não chama Supabase, não toca em `staging/` e não lê `.env`.**
+
+### Passo 2F — Curadoria automática do dataset (CONCLUÍDO)
+- [curate_eval_dataset.py](./curate_eval_dataset.py) implementado.
+- Lê `eval/evaluation_dataset_draft.csv` e gera:
+  - `eval/evaluation_dataset_v1.csv` — até 30 linhas, filtradas e renumeradas.
+  - `eval/evaluation_dataset_rejected.csv` — linhas removidas + coluna `motivo_rejeicao`.
+- Rejeita linhas automáticas quando a `resposta_ideal_draft`:
+  - está vazia, é curta (< 80 chars) ou contém pontos de índice (`................`);
+  - traz ruído de capa/sumário/contato/registro (`sumário`, `www.`, `telefone`, `cep:`, `endereço:`, `central de atendimento`, `sac`, `whatsapp`, `processo mapfre`, `processo ezze`, `nº interno axa`, `registro deste plano`, `condições contratuais versão`);
+  - começa com fragmento de palavra (`usula`, `ico`, `dar `, `r vila`, `ão `, `ara `, `gações`, `enova`, `ontrole`, `ções `, `uer `, `rtuárias`, `omicílio`);
+  - não traz sinal forte para o próprio tipo (lista por tipo definida em `STRONG_SIGNALS`).
+- Priorização das aprovadas: `sinistro > exclusao > cobertura > obrigacao > regulatorio > conceitual > comparacao`, com distribuição entre seguradoras e preferência por páginas > 2.
+- Mantém sempre as 5 perguntas manuais (`Q_manual_001..005`).
+- Limpa: normaliza espaços, trunca `resposta_ideal_draft` a 600 chars, mantém `status_revisao=pendente_revisao`, anexa observação `"Selecionado automaticamente para revisão v1..."`.
+- Renumera: manuais permanecem `Q_manual_*`; automáticas viram `Q001..Qnn`.
+- Resultado da execução: 80 lidas → **30 na v1 (5 manuais + 25 automáticas)** + 50 rejeitadas.
+- Distribuição da v1 por tipo: `exclusao 7 / conceitual 6 / sinistro 6 / cobertura 4 / obrigacao 4 / regulatorio 3`.
+- Distribuição da v1 por fonte: AXA 5 / EZZE 5 / Essor 4 / Mapfre 4 / Excelsior 4 / CNSP_SUSEP 3 / TODAS 5.
+- A v1 **ainda precisa de revisão humana** antes de virar dataset oficial.
+- **Não chama Gemini, não chama Supabase, não apaga o draft.**
+
+### Passo 2G — Revisão assistida + dataset oficial preliminar (CONCLUÍDO)
+- [review_eval_dataset.py](./review_eval_dataset.py) implementado.
+- Lê `eval/evaluation_dataset_v1.csv` e gera:
+  - `eval/evaluation_dataset.csv` — **dataset oficial preliminar** com `status_revisao = aprovado_preliminar` e nova coluna `revisao_observacao` com alertas automáticos por linha.
+  - `eval/evaluation_dataset_review.md` — versão legível em Markdown, para revisão humana sem abrir planilha.
+- Alertas automáticos cobrem: `documento_esperado`/`pagina_esperada` vazios em perguntas automáticas, resposta ainda em estado de "Revisar manualmente", resposta curta (< 120 chars), ruído de capa/contato, e falta de termos esperados por tipo (exclusao, sinistro, cobertura, regulatorio, ou pergunta de responsabilidade civil sem termos relacionados). Quando nada dispara, a linha recebe `ok para avaliação preliminar`.
+- Resultado da execução: 30 lidas → 30 salvas; 25 sem alerta e 5 com alerta (as 5 manuais, todas com `resposta ideal ainda é instrução de revisão` — comportamento esperado).
+- Estados de `status_revisao` no projeto agora são três:
+  1. `pendente_revisao` — gerada automaticamente (no draft e na v1).
+  2. `aprovado_preliminar` — passou pela revisão assistida automática.
+  3. `aprovado` — confirmada por especialista humano (passo manual).
+- O script também reporta quantas linhas do `rejected.csv` foram rejeitadas por `excedeu cap` (16), disponíveis para reincorporação manual.
+- **Não chama Gemini, não chama Supabase, não apaga draft/v1/rejected, não lê `.env`.**
+- **Próximo passo técnico:** implementar `test_retrieval.py` — comparação de busca vetorial pura, busca híbrida (FTS) e HyDE, usando `eval/evaluation_dataset.csv` como referência.
 
 ---
 
